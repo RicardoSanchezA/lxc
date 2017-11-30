@@ -22,14 +22,15 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <string.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "log.h"
+//#include "log.h"
 #include "config.h"
-#include "lxc.h"
-#include "arguments.h"
-#include "utils.h"
+//#include "lxc.h"
+#include "tools/arguments.h"
+#include "tools/utils.h"
 
 static char *checkpoint_dir = NULL;
 static bool stop = false;
@@ -253,7 +254,7 @@ int main(int argc, char *argv[])
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 
-	lxc_log_options_no_override();
+	//lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
