@@ -35,7 +35,6 @@
 #include <lxc/lxccontainer.h>
 
 #include "tools/arguments.h"
-#include "lxccontainer.h"
 #include "tools/utils.h"
 #include "version.h"
 
