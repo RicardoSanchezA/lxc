@@ -48,7 +48,37 @@
 #include "initutils.h"
 */
 
+/* some simple array manipulation utilities */
+typedef void (*lxc_free_fn)(void *);
+
 extern void remove_trailing_slashes(char *p);
+int wait_for_pid(pid_t pid);
+extern int lxc_read_from_file(const char *filename, void* buf, size_t count);
+extern char **lxc_string_split_and_trim(const char *string, char sep);
+extern size_t lxc_array_len(void **array);
+extern void lxc_free_array(void **array, lxc_free_fn element_free_fn);
+extern char *lxc_append_paths(const char *first, const char *second);
+extern bool dir_exists(const char *path);
+extern char *get_rundir(void);
+
+/* Helper functions to parse numbers. */
+extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
+
+/* Some simple string functions; if they return pointers, they are allocated
+ * buffers.
+ */
+extern char *lxc_string_replace(const char *needle, const char *replacement,
+				const char *haystack);
+extern char *lxc_string_join(const char *sep, const char **parts,
+			     bool use_as_prefix);
+
+/* send and receive buffers completely */
+extern ssize_t lxc_write_nointr(int fd, const void* buf, size_t count);
+extern ssize_t lxc_read_nointr(int fd, void* buf, size_t count);
+
+/* returns 1 on success, 0 if there were any failures */
+extern int lxc_rmdir_onedev(char *path, const char *exclude);
+
 
 
 #endif /* __LXC_UTILS_H */

@@ -32,8 +32,6 @@
 #include <lxc/lxccontainer.h>
 
 #include "tools/arguments.h"
-//#include "log.h"
-//#include "lxc.h"
 
 static int my_checker(const struct lxc_arguments* args)
 {
@@ -86,8 +84,6 @@ int main(int argc, char *argv[])
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 
-	// we are not sure about log stuff
-	//lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);

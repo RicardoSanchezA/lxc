@@ -30,11 +30,7 @@
 
 #include <lxc/lxccontainer.h>
 
-//#include "log.h"
-//#include "config.h"
-//#include "lxc.h"
-//#include "conf.h"
-//#include "state.h"
+#include "config.h"
 
 /* we pass fssize in bytes */
 static uint64_t get_fssize(char *s)

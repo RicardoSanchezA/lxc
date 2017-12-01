@@ -28,14 +28,12 @@
 #include <limits.h>
 #include <libgen.h>
 #include <sys/types.h>
+#include <string.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "lxc.h"
-#include "log.h"
-#include "utils.h"
-#include "commands.h"
-#include "arguments.h"
+#include "tools/utils.h"
+#include "tools/arguments.h"
 
 static bool ips;
 static bool state;
@@ -409,7 +407,7 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(ret);
-	lxc_log_options_no_override();
+	//lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);

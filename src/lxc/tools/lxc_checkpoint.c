@@ -26,9 +26,7 @@
 
 #include <lxc/lxccontainer.h>
 
-//#include "log.h"
 #include "config.h"
-//#include "lxc.h"
 #include "tools/arguments.h"
 #include "tools/utils.h"
 
@@ -254,7 +252,6 @@ int main(int argc, char *argv[])
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
 
-	//lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);

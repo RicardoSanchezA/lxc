@@ -18,6 +18,8 @@
 
 #include "config.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <getopt.h>
 #include <regex.h>
 #include <stdbool.h>
@@ -34,12 +36,8 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "arguments.h"
-#include "conf.h"
-#include "confile.h"
-#include "log.h"
-#include "lxc.h"
-#include "utils.h"
+#include "tools/arguments.h"
+#include "tools/utils.h"
 
 /* Per default we only allow five levels of recursion to protect the stack at
  * least a little bit. */
@@ -229,7 +227,6 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(EXIT_FAILURE);
-	lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
