@@ -31,10 +31,8 @@
 #include <errno.h>
 #include <poll.h>
 
-#include "lxc.h"
-#include "log.h"
-#include "monitor.h"
-#include "arguments.h"
+#include "tools/utils.h"
+#include "tools/arguments.h"
 #include "lxccontainer.h"
 
 static bool quit_monitord;
@@ -109,7 +107,6 @@ int main(int argc, char *argv[])
 
 	if (lxc_log_init(&log))
 		exit(rc_main);
-	lxc_log_options_no_override();
 
 	/* REMOVE IN LXC 3.0 */
 	setenv("LXC_UPDATE_CONFIG_FORMAT", "1", 0);
