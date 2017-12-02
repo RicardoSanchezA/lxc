@@ -24,13 +24,15 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <lxc/lxccontainer.h>
 
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "log.h"
 #include "lxc.h"
-#include "utils.h"
+#include "tools/utils.h"
 
 static int my_parser(struct lxc_arguments* args, int c, char* arg);
 static bool quiet;

@@ -26,12 +26,12 @@
 #include <lxc/lxccontainer.h>
 #include <sys/types.h>
 
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "log.h"
 #include "lxc.h"
 #include "storage.h"
 #include "storage_utils.h"
-#include "utils.h"
+#include "tools/utils.h"
 
 static uint64_t get_fssize(char *s)
 {
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
 	if (my_args.configfile)
 		c->load_config(c, my_args.configfile);
 	else
-		c->load_config(c, lxc_global_config_value("lxc.default_config"));
+		c->load_config(c, lxc_get_global_config_item("lxc.default_config"));
 
 	if (my_args.fstype)
 		spec.fstype = my_args.fstype;
