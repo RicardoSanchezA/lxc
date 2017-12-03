@@ -36,9 +36,9 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "error.h"
-#include "initutils.h"
+#include "tools/utils.h"
 #include "log.h"
 
 lxc_log_define(lxc_init, lxc);

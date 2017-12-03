@@ -23,10 +23,10 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "list.h"
 #include "log.h"
-#include "utils.h"
+#include "tools/utils.h"
 
 static struct lxc_list *accumulate_list(char *input, char *delimiter, struct lxc_list *str_list);
 

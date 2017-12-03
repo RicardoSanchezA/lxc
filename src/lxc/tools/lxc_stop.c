@@ -29,9 +29,9 @@
 
 #include "lxc.h"
 #include "log.h"
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "commands.h"
-#include "utils.h"
+#include "tools/utils.h"
 
 #define OPT_NO_LOCK OPT_USAGE + 1
 #define OPT_NO_KILL OPT_USAGE + 2

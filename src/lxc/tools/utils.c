@@ -41,176 +41,158 @@ lxc_log_define(lxc_utils, lxc);
 
 #include "tools/utils.h"
 
+/////////////////////////////////////////////////////////// from initUtils.c
 
-////////////////////////////////////////////////////////////////////// from monitor.c
-int lxc_monitor_open(const char *lxcpath)
+static int mount_fs(const char *source, const char *target, const char *type)
 {
-	struct sockaddr_un addr;
-	int fd;
-	size_t retry;
-	size_t len;
-	int ret = -1;
-	int backoff_ms[] = {10, 50, 100};
+	/* the umount may fail */
+	if (umount(target))
+		fprintf(stderr, "Failed to unmount %s : %s", target, strerror(errno));
 
-	if (lxc_monitor_sock_name(lxcpath, &addr) < 0)
+	if (mount(source, target, type, 0, NULL)) {
+		fprintf(stderr, "Failed to mount %s : %s", target, strerror(errno));
 		return -1;
-
-	fd = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		ERROR("Failed to create socket: %s.", strerror(errno));
-		return -errno;
 	}
 
-	len = strlen(&addr.sun_path[1]);
-	DEBUG("opening monitor socket %s with len %zu", &addr.sun_path[1], len);
-	if (len >= sizeof(addr.sun_path) - 1) {
-		errno = ENAMETOOLONG;
-		ret = -errno;
-		ERROR("name of monitor socket too long (%zu bytes): %s", len, strerror(errno));
-		goto on_error;
-	}
+	printf("'%s' mounted on '%s'", source, target);
 
-	for (retry = 0; retry < sizeof(backoff_ms) / sizeof(backoff_ms[0]); retry++) {
-		fd = lxc_abstract_unix_connect(addr.sun_path);
-		if (fd < 0 || errno != ECONNREFUSED)
-			break;
-		ERROR("Failed to connect to monitor socket. Retrying in %d ms: %s", backoff_ms[retry], strerror(errno));
-		usleep(backoff_ms[retry] * 1000);
-	}
-
-	if (fd < 0) {
-		ret = -errno;
-		ERROR("Failed to connect to monitor socket: %s.", strerror(errno));
-		goto on_error;
-	}
-
-	return fd;
-
-on_error:
-	close(fd);
-	return ret;
+	return 0;
 }
 
-/* Used to spawn a monitord either on startup of a daemon container, or when
- * lxc-monitor starts.
- */
-int lxc_monitord_spawn(const char *lxcpath)
+extern void remove_trailing_slashes(char *p)
 {
-	int ret;
-	int pipefd[2];
-	char pipefd_str[LXC_NUMSTRLEN64];
-	pid_t pid1, pid2;
+	int l = strlen(p);
+	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
+		p[l] = '\0';
+}
 
-	char *const args[] = {
-	    LXC_MONITORD_PATH,
-	    (char *)lxcpath,
-	    pipefd_str,
-	    NULL,
+extern void lxc_setup_fs(void)
+{
+	if (mount_fs("proc", "/proc", "proc"))
+		INFO("Failed to remount proc");
+
+	/* if /dev has been populated by us, /dev/shm does not exist */
+	if (access("/dev/shm", F_OK) && mkdir("/dev/shm", 0777))
+		INFO("Failed to create /dev/shm");
+
+	/* if we can't mount /dev/shm, continue anyway */
+	if (mount_fs("shmfs", "/dev/shm", "tmpfs"))
+		INFO("Failed to mount /dev/shm");
+
+	/* If we were able to mount /dev/shm, then /dev exists */
+	/* Sure, but it's read-only per config :) */
+	if (access("/dev/mqueue", F_OK) && mkdir("/dev/mqueue", 0666)) {
+		DEBUG("Failed to create '/dev/mqueue'");
+		return;
+	}
+
+	/* continue even without posix message queue support */
+	if (mount_fs("mqueue", "/dev/mqueue", "mqueue"))
+		INFO("Failed to mount /dev/mqueue");
+}
+
+/*
+ * Sets the process title to the specified title. Note that this may fail if
+ * the kernel doesn't support PR_SET_MM_MAP (kernels <3.18).
+ */
+int setproctitle(char *title)
+{
+	static char *proctitle = NULL;
+	char buf[2048], *tmp;
+	FILE *f;
+	int i, len, ret = 0;
+
+	/* We don't really need to know all of this stuff, but unfortunately
+	 * PR_SET_MM_MAP requires us to set it all at once, so we have to
+	 * figure it out anyway.
+	 */
+	unsigned long start_data, end_data, start_brk, start_code, end_code,
+			start_stack, arg_start, arg_end, env_start, env_end,
+			brk_val;
+	struct prctl_mm_map prctl_map;
+
+	f = fopen_cloexec("/proc/self/stat", "r");
+	if (!f) {
+		return -1;
+	}
+
+	tmp = fgets(buf, sizeof(buf), f);
+	fclose(f);
+	if (!tmp) {
+		return -1;
+	}
+
+	/* Skip the first 25 fields, column 26-28 are start_code, end_code,
+	 * and start_stack */
+	tmp = strchr(buf, ' ');
+	for (i = 0; i < 24; i++) {
+		if (!tmp)
+			return -1;
+		tmp = strchr(tmp+1, ' ');
+	}
+	if (!tmp)
+		return -1;
+
+	i = sscanf(tmp, "%lu %lu %lu", &start_code, &end_code, &start_stack);
+	if (i != 3)
+		return -1;
+
+	/* Skip the next 19 fields, column 45-51 are start_data to arg_end */
+	for (i = 0; i < 19; i++) {
+		if (!tmp)
+			return -1;
+		tmp = strchr(tmp+1, ' ');
+	}
+
+	if (!tmp)
+		return -1;
+
+	i = sscanf(tmp, "%lu %lu %lu %*u %*u %lu %lu",
+		&start_data,
+		&end_data,
+		&start_brk,
+		&env_start,
+		&env_end);
+	if (i != 5)
+		return -1;
+
+	/* Include the null byte here, because in the calculations below we
+	 * want to have room for it. */
+	len = strlen(title) + 1;
+
+	proctitle = realloc(proctitle, len);
+	if (!proctitle)
+		return -1;
+
+	arg_start = (unsigned long) proctitle;
+	arg_end = arg_start + len;
+
+	brk_val = syscall(__NR_brk, 0);
+
+	prctl_map = (struct prctl_mm_map) {
+		.start_code = start_code,
+		.end_code = end_code,
+		.start_stack = start_stack,
+		.start_data = start_data,
+		.end_data = end_data,
+		.start_brk = start_brk,
+		.brk = brk_val,
+		.arg_start = arg_start,
+		.arg_end = arg_end,
+		.env_start = env_start,
+		.env_end = env_end,
+		.auxv = NULL,
+		.auxv_size = 0,
+		.exe_fd = -1,
 	};
 
-	/* double fork to avoid zombies when monitord exits */
-	pid1 = fork();
-	if (pid1 < 0) {
-		SYSERROR("Failed to fork().");
-		return -1;
-	}
+	ret = prctl(PR_SET_MM, PR_SET_MM_MAP, (long) &prctl_map, sizeof(prctl_map), 0);
+	if (ret == 0)
+		strcpy((char*)arg_start, title);
+	else
+		INFO("setting cmdline failed - %s", strerror(errno));
 
-	if (pid1) {
-		DEBUG("Going to wait for pid %d.", pid1);
-		if (waitpid(pid1, NULL, 0) != pid1)
-			return -1;
-		DEBUG("Finished waiting on pid %d.", pid1);
-		return 0;
-	}
-
-	if (pipe(pipefd) < 0) {
-		SYSERROR("Failed to create pipe.");
-		exit(EXIT_FAILURE);
-	}
-
-	pid2 = fork();
-	if (pid2 < 0) {
-		SYSERROR("Failed to fork().");
-		exit(EXIT_FAILURE);
-	}
-
-	if (pid2) {
-		DEBUG("Trying to sync with child process.");
-		char c;
-		/* Wait for daemon to create socket. */
-		close(pipefd[1]);
-
-		/* Sync with child, we're ignoring the return from read
-		 * because regardless if it works or not, either way we've
-		 * synced with the child process. the if-empty-statement
-		 * construct is to quiet the warn-unused-result warning.
-		 */
-		if (read(pipefd[0], &c, 1))
-			;
-
-		close(pipefd[0]);
-
-		DEBUG("Successfully synced with child process.");
-		exit(EXIT_SUCCESS);
-	}
-
-	if (setsid() < 0) {
-		SYSERROR("Failed to setsid().");
-		exit(EXIT_FAILURE);
-	}
-
-	lxc_check_inherited(NULL, true, &pipefd[1], 1);
-	if (null_stdfds() < 0) {
-		SYSERROR("Failed to dup2() standard file descriptors to /dev/null.");
-		exit(EXIT_FAILURE);
-	}
-
-	close(pipefd[0]);
-
-	ret = snprintf(pipefd_str, LXC_NUMSTRLEN64, "%d", pipefd[1]);
-	if (ret < 0 || ret >= LXC_NUMSTRLEN64) {
-		ERROR("Failed to create pid argument to pass to monitord.");
-		exit(EXIT_FAILURE);
-	}
-
-	DEBUG("Using pipe file descriptor %d for monitord.", pipefd[1]);
-
-	execvp(args[0], args);
-	SYSERROR("failed to exec lxc-monitord");
-
-	exit(EXIT_FAILURE);
-}
-
-int lxc_monitor_read_fdset(struct pollfd *fds, nfds_t nfds, struct lxc_msg *msg,
-			   int timeout)
-{
-	long i;
-	int ret;
-
-	ret = poll(fds, nfds, timeout * 1000);
-	if (ret == -1)
-		return -1;
-	else if (ret == 0)
-		return -2;  /* timed out */
-
-	/* Only read from the first ready fd, the others will remain ready for
-	 * when this routine is called again.
-	 */
-	for (i = 0; i < nfds; i++) {
-		if (fds[i].revents != 0) {
-			fds[i].revents = 0;
-			ret = recv(fds[i].fd, msg, sizeof(*msg), 0);
-			if (ret <= 0) {
-				SYSERROR("Failed to receive message. Did monitord die?: %s.", strerror(errno));
-				return -1;
-			}
-			return ret;
-		}
-	}
-
-	SYSERROR("No ready fd found.");
-
-	return -1;
+	return ret;
 }
 
 
@@ -228,12 +210,6 @@ const char *lxc_state2str(lxc_state_t state)
 }
 
 /////////////////////////////////////////////////////// from utils.c
-extern void remove_trailing_slashes(char *p)
-{
-	int l = strlen(p);
-	while (--l >= 0 && (p[l] == '/' || p[l] == '\n'))
-		p[l] = '\0';
-}
 
 int wait_for_pid(pid_t pid)
 {
@@ -456,31 +432,6 @@ char *lxc_append_paths(const char *first, const char *second)
 	return result;
 }
 
-int lxc_safe_uint(const char *numstr, unsigned int *converted)
-{
-	char *err = NULL;
-	unsigned long int uli;
-
-	while (isspace(*numstr))
-		numstr++;
-
-	if (*numstr == '-')
-		return -EINVAL;
-
-	errno = 0;
-	uli = strtoul(numstr, &err, 0);
-	if (errno == ERANGE && uli == ULONG_MAX)
-		return -ERANGE;
-
-	if (err == numstr || *err != '\0')
-		return -EINVAL;
-
-	if (uli > UINT_MAX)
-		return -ERANGE;
-
-	*converted = (unsigned int)uli;
-	return 0;
-}
 
 bool dir_exists(const char *path)
 {
@@ -644,6 +595,29 @@ int lxc_safe_uint(const char *numstr, unsigned int *converted)
 		return -ERANGE;
 
 	*converted = (unsigned int)uli;
+	return 0;
+}
+
+int lxc_safe_int(const char *numstr, int *converted)
+{
+	char *err = NULL;
+	signed long int sli;
+
+	errno = 0;
+	sli = strtol(numstr, &err, 0);
+	if (errno == ERANGE && (sli == LONG_MAX || sli == LONG_MIN))
+		return -ERANGE;
+
+	if (errno != 0 && sli == 0)
+		return -EINVAL;
+
+	if (err == numstr || *err != '\0')
+		return -EINVAL;
+
+	if (sli > INT_MAX || sli < INT_MIN)
+		return -ERANGE;
+
+	*converted = (int)sli;
 	return 0;
 }
 
@@ -821,5 +795,28 @@ char **lxc_normalize_path(const char *path)
 	}
 
 	return components;
+}
+
+int lxc_wait_for_pid_status(pid_t pid)
+{
+	int status, ret;
+
+again:
+	ret = waitpid(pid, &status, 0);
+	if (ret == -1) {
+		if (errno == EINTR)
+			goto again;
+		return -1;
+	}
+	if (ret != pid)
+		goto again;
+	return status;
+}
+
+const char *lxc_state2str(lxc_state_t state)
+{
+	if (state < STOPPED || state > MAX_STATE - 1)
+		return NULL;
+	return strstate[state];
 }
 

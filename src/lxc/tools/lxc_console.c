@@ -38,13 +38,13 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "arguments.h"
+#include "tools/arguments.h"
 #include "commands.h"
 #include "error.h"
 #include "log.h"
 #include "lxc.h"
 #include "mainloop.h"
-#include "utils.h"
+#include "tools/utils.h"
 
 static char etoc(const char *expr)
 {

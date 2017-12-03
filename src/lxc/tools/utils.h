@@ -46,51 +46,27 @@
 */
 #include <stdbool.h>
 #include <limits.h>
+#include <sys/ioctl.h>
 #include <poll.h>
 
-/////////////////////////////////////////// used in lxc_monitor.c, defined in monitor.h
 
-typedef enum {
-	lxc_msg_state,
-	lxc_msg_priority,
-	lxc_msg_exit_code,
-} lxc_msg_type_t;
+///////////////////////////////////////// defined in initUtils.c
+extern void remove_trailing_slashes(char *p);
+extern void lxc_setup_fs(void);
+extern int setproctitle(char *title);
 
-struct lxc_msg {
-	lxc_msg_type_t type;
-	char name[NAME_MAX+1];
-	int value;
-};
 
-/*
- * Open the monitoring mechanism for a specific container
- * The function will return an fd corresponding to the events
- * Returns a file descriptor on success, < 0 otherwise
- */
-extern int lxc_monitor_open(const char *lxcpath);
+/////////////////////////////////////////// used in lxc_monitor.c, defined in state.h
 
-extern int lxc_monitord_spawn(const char *lxcpath);
 
-/*
- * Blocking read from multiple monitors for the next container state
- * change with timeout
- * @fds     : struct pollfd descripting the fds to use
- * @nfds    : the number of entries in fds
- * @msg     : the variable which will be filled with the state
- * @timeout : the timeout in seconds to wait for a state change
- * Returns 0 if the monitored container has exited, > 0 if
- * data was read, < 0 otherwise
- */
-extern int lxc_monitor_read_fdset(struct pollfd *fds, nfds_t nfds, struct lxc_msg *msg,
-			   int timeout);
-
+// used in lxc_monitor.c, defined in state.h
+extern const char *lxc_state2str(lxc_state_t state);
 
 ///////////////////////////////////// from utils.h
 
 /* some simple array manipulation utilities */
 typedef void (*lxc_free_fn)(void *);
 
-extern void remove_trailing_slashes(char *p);
 int wait_for_pid(pid_t pid);
 extern int lxc_read_from_file(const char *filename, void* buf, size_t count);
 extern char **lxc_string_split(const char *string, char sep);
@@ -109,6 +85,7 @@ extern bool switch_to_ns(pid_t pid, const char *ns);
 
 /* Helper functions to parse numbers. */
 extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
+extern int lxc_safe_int(const char *numstr, int *converted);
 extern int lxc_safe_long(const char *numstr, long int *converted);
 
 /* Some simple string functions; if they return pointers, they are allocated
@@ -137,6 +114,11 @@ extern int lxc_rmdir_onedev(char *path, const char *exclude);
  *     foo//bar     ->   { foo, bar, NULL }
  */
 extern char **lxc_normalize_path(const char *path);
+
+/*
+ * wait on a child we forked
+ */
+extern int lxc_wait_for_pid_status(pid_t pid);
 
 
 #endif /* __LXC_UTILS_H */

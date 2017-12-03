@@ -33,7 +33,6 @@
 
 #include "tools/utils.h"
 #include "tools/arguments.h"
-#include "tools/monitor.h"
 #include "lxccontainer.h"
 
 static bool quit_monitord;
