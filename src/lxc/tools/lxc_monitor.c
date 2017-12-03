@@ -31,9 +31,11 @@
 #include <errno.h>
 #include <poll.h>
 
+#include <lxc/lxccontainer.h>
+
 #include "tools/utils.h"
 #include "tools/arguments.h"
-#include "lxccontainer.h"
+#include "tools/monitor.h"
 
 static bool quit_monitord;
 
