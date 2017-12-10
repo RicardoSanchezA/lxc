@@ -29,10 +29,10 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "log.h"
 #include "lxc.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 static int my_parser(struct lxc_arguments* args, int c, char* arg);
 static bool quiet;

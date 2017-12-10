@@ -37,10 +37,10 @@
 #include "log.h"
 #include "conf.h"
 #include "confile.h"
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "config.h"
 #include "start.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 static struct lxc_list defines;
 

@@ -36,7 +36,7 @@
 #include <lxc/lxccontainer.h>
 
 #include "attach.h"
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "caps.h"
 #include "conf.h"
 #include "confile.h"
@@ -44,7 +44,7 @@
 #include "log.h"
 #include "list.h"
 #include "mainloop.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 #if HAVE_PTY_H
 #include <pty.h>

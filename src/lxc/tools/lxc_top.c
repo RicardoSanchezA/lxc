@@ -35,11 +35,11 @@
 #include <sys/ioctl.h>
 #include <lxc/lxccontainer.h>
 
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "log.h"
 #include "lxc.h"
 #include "mainloop.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 #define USER_HZ   100
 #define ESC       "\033"

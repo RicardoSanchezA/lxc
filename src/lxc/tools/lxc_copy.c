@@ -39,12 +39,12 @@
 #include "attach.h"
 #include "log.h"
 #include "confile.h"
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "lxc.h"
 #include "conf.h"
 #include "state.h"
 #include "storage.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 #ifndef HAVE_GETSUBOPT
 #include <../include/getsubopt.h>

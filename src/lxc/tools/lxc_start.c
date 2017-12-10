@@ -46,9 +46,9 @@
 #include "lxc.h"
 #include "conf.h"
 #include "cgroup.h"
-#include "tools/utils.h"
+#include "utils.h"
 #include "confile.h"
-#include "tools/arguments.h"
+#include "arguments.h"
 
 #define OPT_SHARE_NET OPT_USAGE + 1
 #define OPT_SHARE_IPC OPT_USAGE + 2

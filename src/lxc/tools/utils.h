@@ -27,7 +27,7 @@
 /* Properly support loop devices on 32bit systems. */
 //#define _FILE_OFFSET_BITS 64
 
-/*
+
 #include "config.h"
 #include <errno.h>
 #include <stdarg.h>
@@ -43,11 +43,15 @@
 #include <linux/memfd.h>
 #endif
 #include "initutils.h"
-*/
-#include <stdbool.h>
+
 #include <limits.h>
 #include <sys/ioctl.h>
-#include <poll.h>
+
+/* Useful macros */
+/* Maximum number for 64 bit integer is a string with 21 digits: 2^64 - 1 = 21 */
+#define LXC_NUMSTRLEN64 21
+#define LXC_LINELEN 4096
+#define LXC_IDMAPLEN 4096
 
 
 ///////////////////////////////////////// defined in initUtils.c
@@ -56,13 +60,8 @@ extern void lxc_setup_fs(void);
 extern int setproctitle(char *title);
 
 
-/////////////////////////////////////////// used in lxc_monitor.c, defined in state.h
-
-
-// used in lxc_monitor.c, defined in state.h
-extern const char *lxc_state2str(lxc_state_t state);
-
 ///////////////////////////////////// from utils.h
+
 
 /* some simple array manipulation utilities */
 typedef void (*lxc_free_fn)(void *);
@@ -82,6 +81,11 @@ extern char *get_template_path(const char *t);
 extern int mkdir_p(const char *dir, mode_t mode);
 extern bool file_exists(const char *f);
 extern bool switch_to_ns(pid_t pid, const char *ns);
+extern int lxc_grow_array(void ***array, size_t *capacity, size_t new_size,
+			  size_t capacity_increment);
+extern int null_stdfds(void);
+extern int set_stdfds(int fd);
+extern int open_devnull(void);
 
 /* Helper functions to parse numbers. */
 extern int lxc_safe_uint(const char *numstr, unsigned int *converted);
@@ -119,6 +123,14 @@ extern char **lxc_normalize_path(const char *path);
  * wait on a child we forked
  */
 extern int lxc_wait_for_pid_status(pid_t pid);
+
+/* __typeof__ should be safe to use with all compilers. */
+typedef __typeof__(((struct statfs *)NULL)->f_type) fs_type_magic;
+extern bool has_fs_type(const char *path, fs_type_magic magic_val);
+extern bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val);
+
+#define FNV1A_64_INIT ((uint64_t)0xcbf29ce484222325ULL)
+extern uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval);
 
 
 #endif /* __LXC_UTILS_H */

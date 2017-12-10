@@ -36,8 +36,8 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "tools/arguments.h"
-#include "tools/utils.h"
+#include "arguments.h"
+#include "utils.h"
 
 /* Per default we only allow five levels of recursion to protect the stack at
  * least a little bit. */

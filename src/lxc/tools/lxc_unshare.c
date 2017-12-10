@@ -36,7 +36,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "tools/utils.h"
+#include "utils.h"
 #include "caps.h"
 #include "cgroup.h"
 #include "error.h"

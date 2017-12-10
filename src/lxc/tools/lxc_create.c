@@ -26,12 +26,12 @@
 #include <lxc/lxccontainer.h>
 #include <sys/types.h>
 
-#include "tools/arguments.h"
+#include "arguments.h"
 #include "log.h"
 #include "lxc.h"
 #include "storage.h"
 #include "storage_utils.h"
-#include "tools/utils.h"
+#include "utils.h"
 
 static uint64_t get_fssize(char *s)
 {

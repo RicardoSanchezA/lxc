@@ -27,8 +27,8 @@
 #include <lxc/lxccontainer.h>
 
 #include "config.h"
-#include "tools/arguments.h"
-#include "tools/utils.h"
+#include "arguments.h"
+#include "utils.h"
 
 static char *checkpoint_dir = NULL;
 static bool stop = false;

@@ -32,8 +32,8 @@
 
 #include <lxc/lxccontainer.h>
 
-#include "tools/utils.h"
-#include "tools/arguments.h"
+#include "utils.h"
+#include "arguments.h"
 
 static bool ips;
 static bool state;

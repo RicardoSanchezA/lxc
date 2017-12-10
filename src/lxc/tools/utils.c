@@ -1,7 +1,7 @@
 //#include "config.h"
 
 //#define __STDC_FORMAT_MACROS /* Required for PRIu64 to work. */
-/*
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -25,21 +25,26 @@
 #include "lxclock.h"
 #include "namespace.h"
 #include "parse.h"
-#include "utils.h"
+#include "tools/utils.h"
 #ifndef O_PATH
 #define O_PATH      010000000
 #endif
 #ifndef O_NOFOLLOW
 #define O_NOFOLLOW  00400000
 #endif
-lxc_log_define(lxc_utils, lxc);
-*/
 
-/*
- * if path is btrfs, tries to remove it and any subvolumes beneath it
- */
+static int setns(int fd, int nstype)
+{
+#ifdef __NR_setns
+	return syscall(__NR_setns, fd, nstype);
+#elif defined(__NR_set_ns)
+	return syscall(__NR_set_ns, fd, nstype);
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+}
 
-#include "tools/utils.h"
 
 /////////////////////////////////////////////////////////// from initUtils.c
 
@@ -69,26 +74,26 @@ extern void remove_trailing_slashes(char *p)
 extern void lxc_setup_fs(void)
 {
 	if (mount_fs("proc", "/proc", "proc"))
-		INFO("Failed to remount proc");
+		printf("Failed to remount proc");
 
 	/* if /dev has been populated by us, /dev/shm does not exist */
 	if (access("/dev/shm", F_OK) && mkdir("/dev/shm", 0777))
-		INFO("Failed to create /dev/shm");
+		printf("Failed to create /dev/shm");
 
 	/* if we can't mount /dev/shm, continue anyway */
 	if (mount_fs("shmfs", "/dev/shm", "tmpfs"))
-		INFO("Failed to mount /dev/shm");
+		printf("Failed to mount /dev/shm");
 
 	/* If we were able to mount /dev/shm, then /dev exists */
 	/* Sure, but it's read-only per config :) */
 	if (access("/dev/mqueue", F_OK) && mkdir("/dev/mqueue", 0666)) {
-		DEBUG("Failed to create '/dev/mqueue'");
+		printf("Failed to create '/dev/mqueue'");
 		return;
 	}
 
 	/* continue even without posix message queue support */
 	if (mount_fs("mqueue", "/dev/mqueue", "mqueue"))
-		INFO("Failed to mount /dev/mqueue");
+		printf("Failed to mount /dev/mqueue");
 }
 
 /*
@@ -190,26 +195,149 @@ int setproctitle(char *title)
 	if (ret == 0)
 		strcpy((char*)arg_start, title);
 	else
-		INFO("setting cmdline failed - %s", strerror(errno));
+		printf("setting cmdline failed - %s", strerror(errno));
 
 	return ret;
 }
 
 
-////////////////////////////////////////////////////////////////// from state.c
-static const char * const strstate[] = {
-	"STOPPED", "STARTING", "RUNNING", "STOPPING",
-	"ABORTING", "FREEZING", "FROZEN", "THAWED",
-};
+/////////////////////////////////////////////////////// from utils.c
 
-const char *lxc_state2str(lxc_state_t state)
+/* We have two different magic values for overlayfs, yay. */
+#ifndef OVERLAYFS_SUPER_MAGIC
+#define OVERLAYFS_SUPER_MAGIC 0x794c764f
+#endif
+
+#ifndef OVERLAY_SUPER_MAGIC
+#define OVERLAY_SUPER_MAGIC 0x794c7630
+#endif
+
+/* In overlayfs, st_dev is unreliable. So on overlayfs we don't do the
+ * lxc_rmdir_onedev()
+ */
+static bool is_native_overlayfs(const char *path)
 {
-	if (state < STOPPED || state > MAX_STATE - 1)
-		return NULL;
-	return strstate[state];
+	if (has_fs_type(path, OVERLAY_SUPER_MAGIC) ||
+	    has_fs_type(path, OVERLAYFS_SUPER_MAGIC))
+		return true;
+
+	return false;
 }
 
-/////////////////////////////////////////////////////// from utils.c
+/*
+ * if path is btrfs, tries to remove it and any subvolumes beneath it
+ */
+extern bool btrfs_try_remove_subvol(const char *path);
+
+static int _recursive_rmdir(char *dirname, dev_t pdev,
+			    const char *exclude, int level, bool onedev)
+{
+	struct dirent *direntp;
+	DIR *dir;
+	int ret, failed=0;
+	char pathname[MAXPATHLEN];
+	bool hadexclude = false;
+
+	dir = opendir(dirname);
+	if (!dir) {
+		fprintf(stderr, "failed to open %s", dirname);
+		return -1;
+	}
+
+	while ((direntp = readdir(dir))) {
+		struct stat mystat;
+		int rc;
+
+		if (!direntp)
+			break;
+
+		if (!strcmp(direntp->d_name, ".") ||
+		    !strcmp(direntp->d_name, ".."))
+			continue;
+
+		rc = snprintf(pathname, MAXPATHLEN, "%s/%s", dirname, direntp->d_name);
+		if (rc < 0 || rc >= MAXPATHLEN) {
+			fprintf(stderr, "pathname too long");
+			failed=1;
+			continue;
+		}
+
+		if (!level && exclude && !strcmp(direntp->d_name, exclude)) {
+			ret = rmdir(pathname);
+			if (ret < 0) {
+				switch(errno) {
+				case ENOTEMPTY:
+					printf("Not deleting snapshot %s", pathname);
+					hadexclude = true;
+					break;
+				case ENOTDIR:
+					ret = unlink(pathname);
+					if (ret)
+						printf("Failed to remove %s", pathname);
+					break;
+				default:
+					fprintf(stderr, "Failed to rmdir %s", pathname);
+					failed = 1;
+					break;
+				}
+			}
+			continue;
+		}
+
+		ret = lstat(pathname, &mystat);
+		if (ret) {
+			fprintf(stderr, "Failed to stat %s", pathname);
+			failed = 1;
+			continue;
+		}
+		if (onedev && mystat.st_dev != pdev) {
+			/* TODO should we be checking /proc/self/moutinfo for
+			 * pathname and not doing this if found? */
+			if (btrfs_try_remove_subvol(pathname))
+				printf("Removed btrfs subvolume at %s\n", pathname);
+			continue;
+		}
+		if (S_ISDIR(mystat.st_mode)) {
+			if (_recursive_rmdir(pathname, pdev, exclude, level+1, onedev) < 0)
+				failed=1;
+		} else {
+			if (unlink(pathname) < 0) {
+				fprintf(stderr, "Failed to delete %s", pathname);
+				failed=1;
+			}
+		}
+	}
+
+	if (rmdir(dirname) < 0 && !btrfs_try_remove_subvol(dirname) && !hadexclude) {
+		fprintf(stderr, "Failed to delete %s", dirname);
+		failed=1;
+	}
+
+	ret = closedir(dir);
+	if (ret) {
+		fprintf(stderr, "Failed to close directory %s", dirname);
+		failed=1;
+	}
+
+	return failed ? -1 : 0;
+}
+
+
+static bool complete_word(char ***result, char *start, char *end, size_t *cap, size_t *cnt)
+{
+	int r;
+
+	r = lxc_grow_array((void ***)result, cap, 2 + *cnt, 16);
+	if (r < 0)
+		return false;
+	(*result)[*cnt] = strndup(start, end - start);
+	if (!(*result)[*cnt])
+		return false;
+	(*cnt)++;
+
+	return true;
+}
+
 
 int wait_for_pid(pid_t pid)
 {
@@ -251,7 +379,7 @@ int lxc_read_from_file(const char *filename, void* buf, size_t count)
 	}
 
 	if (ret < 0)
-		ERROR("read %s: %s", filename, strerror(errno));
+		fprintf(stderr, "read %s: %s", filename, strerror(errno));
 
 	saved_errno = errno;
 	close(fd);
@@ -461,10 +589,10 @@ char *get_rundir()
 		return rundir;
 	}
 
-	INFO("XDG_RUNTIME_DIR isn't set in the environment.");
+	printf("XDG_RUNTIME_DIR isn't set in the environment.");
 	homedir = getenv("HOME");
 	if (!homedir) {
-		ERROR("HOME isn't set in the environment.");
+		fprintf(stderr, "HOME isn't set in the environment.");
 		return NULL;
 	}
 
@@ -509,7 +637,7 @@ char *get_template_path(const char *t)
 		return NULL;
 	}
 	if (access(tpath, X_OK) < 0) {
-		SYSERROR("bad template: %s", t);
+		fprintf(stderr, "bad template: %s", t);
 		free(tpath);
 		return NULL;
 	}
@@ -529,7 +657,7 @@ extern int mkdir_p(const char *dir, mode_t mode)
 		makeme = strndup(orig, dir - orig);
 		if (*makeme) {
 			if (mkdir(makeme, mode) && errno != EEXIST) {
-				SYSERROR("failed to create directory '%s'", makeme);
+				fprintf(stderr, "failed to create directory '%s'", makeme);
 				free(makeme);
 				return -1;
 			}
@@ -558,18 +686,82 @@ bool switch_to_ns(pid_t pid, const char *ns) {
 
 	fd = open(nspath, O_RDONLY);
 	if (fd < 0) {
-		SYSERROR("failed to open %s", nspath);
+		fprintf(stderr, "failed to open %s", nspath);
 		return false;
 	}
 
 	ret = setns(fd, 0);
 	if (ret) {
-		SYSERROR("failed to set process %d to %s of %d.", pid, ns, fd);
+		fprintf(stderr, "failed to set process %d to %s of %d.", pid, ns, fd);
 		close(fd);
 		return false;
 	}
 	close(fd);
 	return true;
+}
+
+int lxc_grow_array(void ***array, size_t* capacity, size_t new_size, size_t capacity_increment)
+{
+	size_t new_capacity;
+	void **new_array;
+
+	/* first time around, catch some trivial mistakes of the user
+	 * only initializing one of these */
+	if (!*array || !*capacity) {
+		*array = NULL;
+		*capacity = 0;
+	}
+
+	new_capacity = *capacity;
+	while (new_size + 1 > new_capacity)
+		new_capacity += capacity_increment;
+	if (new_capacity != *capacity) {
+		/* we have to reallocate */
+		new_array = realloc(*array, new_capacity * sizeof(void *));
+		if (!new_array)
+			return -1;
+		memset(&new_array[*capacity], 0, (new_capacity - (*capacity)) * sizeof(void *));
+		*array = new_array;
+		*capacity = new_capacity;
+	}
+
+	/* array has sufficient elements */
+	return 0;
+}
+
+int set_stdfds(int fd)
+{
+	int ret;
+
+	if (fd < 0)
+		return -1;
+
+	ret = dup2(fd, STDIN_FILENO);
+	if (ret < 0)
+		return -1;
+
+	ret = dup2(fd, STDOUT_FILENO);
+	if (ret < 0)
+		return -1;
+
+	ret = dup2(fd, STDERR_FILENO);
+	if (ret < 0)
+		return -1;
+
+	return 0;
+}
+
+int null_stdfds(void)
+{
+	int ret = -1;
+	int fd = open_devnull();
+
+	if (fd >= 0) {
+		ret = set_stdfds(fd);
+		close(fd);
+	}
+
+	return ret;
 }
 
 int lxc_safe_uint(const char *numstr, unsigned int *converted)
@@ -755,7 +947,7 @@ extern int lxc_rmdir_onedev(char *path, const char *exclude)
 	if (lstat(path, &mystat) < 0) {
 		if (errno == ENOENT)
 			return 0;
-		ERROR("Failed to stat %s", path);
+		fprintf(stderr, "Failed to stat %s", path);
 		return -1;
 	}
 
@@ -813,10 +1005,49 @@ again:
 	return status;
 }
 
-const char *lxc_state2str(lxc_state_t state)
+bool has_fs_type(const char *path, fs_type_magic magic_val)
 {
-	if (state < STOPPED || state > MAX_STATE - 1)
-		return NULL;
-	return strstate[state];
+	bool has_type;
+	int ret;
+	struct statfs sb;
+
+	ret = statfs(path, &sb);
+	if (ret < 0)
+		return false;
+
+	has_type = is_fs_type(&sb, magic_val);
+	if (!has_type && magic_val == RAMFS_MAGIC)
+		fprintf(stderr, "When the ramfs it a tmpfs statfs() might report tmpfs");
+
+	return has_type;
+}
+
+bool is_fs_type(const struct statfs *fs, fs_type_magic magic_val)
+{
+	return (fs->f_type == (fs_type_magic)magic_val);
+}
+
+/* Note we don't use SHA-1 here as we don't want to depend on HAVE_GNUTLS.
+ * FNV has good anti collision properties and we're not worried
+ * about pre-image resistance or one-way-ness, we're just trying to make
+ * the name unique in the 108 bytes of space we have.
+ */
+uint64_t fnv_64a_buf(void *buf, size_t len, uint64_t hval)
+{
+	unsigned char *bp;
+
+	for(bp = buf; bp < (unsigned char *)buf + len; bp++)
+	{
+		/* xor the bottom with the current octet */
+		hval ^= (uint64_t)*bp;
+
+		/* gcc optimised:
+		 * multiply by the 64 bit FNV magic prime mod 2^64
+		 */
+		hval += (hval << 1) + (hval << 4) + (hval << 5) +
+			(hval << 7) + (hval << 8) + (hval << 40);
+	}
+
+	return hval;
 }
 
